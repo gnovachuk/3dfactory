@@ -52,9 +52,32 @@ fn ComponentPool(comptime T: type) type {
     };
 }
 
-const World = struct {
-    pools: std.ArrayList(ComponentPool()),
-    next_entity: Entity = 0,
+pub const World = struct {
+    allocator: std.mem.Allocator,
+    /// Key: type name string. Value: pointer to ComponentPool of that type (type erased).
+    pools: std.StringHashMap(*anyopaque),
+    next_entity: Entity,
+
+    pub fn init(allocator: std.mem.Allocator) World {
+        return .{
+            .allocator = allocator,
+            .pools = std.StringHashMap(*anyopaque).init(allocator),
+            .next_entity = 0,
+        };
+    }
+
+    pub fn addComponent(self: *World, entity: Entity, comptime T: type, value: T) !void {
+        const type_name = @typeName(T);
+        if (self.pools.get(type_name)) |pool_ptr| {
+            const pool: *ComponentPool(T) = @ptrCast(@alignCast(pool_ptr));
+            try pool.add(entity, value);
+        } else {
+            const pool = try self.allocator.create(ComponentPool(T));
+            pool.* = ComponentPool(T).init(self.allocator);
+            try self.pools.put(type_name, pool);
+            try pool.add(entity, value);
+        }
+    }
 };
 
 test "component pool add and has" {

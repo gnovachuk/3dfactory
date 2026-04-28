@@ -1,6 +1,8 @@
 const std = @import("std");
-const math = @import("math.zig");
+
 const c = @import("gl.zig").c;
+const ecs = @import("ecs.zig");
+const math = @import("math.zig");
 const Mesh = @import("mesh.zig").Mesh;
 const Shader = @import("shader.zig").Shader;
 
@@ -22,6 +24,10 @@ pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
+
+    var world = ecs.World.init(allocator);
+    try world.addComponent(0, math.Vec3, math.Vec3.init(0, 0, 0));
+    std.debug.print("{s} {?}\n", .{ @typeName(math.Vec3), world.pools.get(@typeName(math.Vec3)) });
 
     const v = c.glfwGetVersionString();
     std.debug.print("GLFW version: {s}\n", .{v});
@@ -53,13 +59,13 @@ pub fn main() !void {
         // bottom face.
         -0.5, -0.5, -0.5, 1, 0, 0, // bfl 0
         0.5, -0.5, -0.5, 0, 1, 0, // bfr 1
-        0.5, -0.5, 0.5, 0, 0, 1, // bnr 2
-        -0.5, -0.5, 0.5, 1, 1, 0, // bnl 3
+        0.5, -0.5, 0.5, 1, 0, 1, // bnr 2
+        -0.5, -0.5, 0.5, 0, 1, 0, // bnl 3
 
         // front face.
         -0.5, 0.5, 0.5, 1, 0, 1, // tnl 4
-        0.5, 0.5, 0.5, 0, 1, 1, // tnr 5
-        -0.5, 0.5, -0.5, 1, 1, 1, // tfl 6
+        0.5, 0.5, 0.5, 0, 1, 0, // tnr 5
+        -0.5, 0.5, -0.5, 1, 0, 1, // tfl 6
         0.5, 0.5, -0.5, 0.5, 0.5, 0.5, // tfr 7
     };
 
