@@ -13,6 +13,7 @@ pub fn EntityIter(comptime types: anytype) type {
                 const ent = self.primary_entities[self.index];
                 self.index += 1;
 
+                // TODO: optimise, pick smallest pool instead of first pool.
                 // skip pool 0, primary entities are always in pool 0
                 inline for (types, 0..) |T, i| {
                     if (i == 0) continue;
@@ -35,11 +36,11 @@ fn Query(comptime types: anytype) type {
             return .{ .pools = &self.pools, .primary_entities = pool.entities.items };
         }
 
-        pub fn get(self: *@This(), comptime T: type, entity: Entity) ?*T {
+        pub fn get(self: *@This(), comptime T: type, entity: Entity) *T {
             inline for (types, 0..) |Pool_T, i| {
                 if (Pool_T == T) {
                     const pool: *ComponentPool(T) = @ptrCast(@alignCast(self.pools[i]));
-                    return pool.get(entity);
+                    return pool.get(entity).?;
                 }
             }
             @compileError("Component type not in this query: " ++ @typeName(T));

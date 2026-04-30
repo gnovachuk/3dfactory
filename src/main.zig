@@ -9,16 +9,33 @@ const Shader = @import("shader.zig").Shader;
 const WIDTH = 1280;
 const HEIGHT = 720;
 
-const Entity = struct {
-    position: math.Vec3,
+const Transform = struct {
+    pos: math.Vec3,
     rotation: math.Vec3,
 
-    fn getModelMatrix(self: Entity) math.Mat4 {
-        const translation = math.Mat4.translate(self.position);
+    pub fn modelMatrix(self: *Transform) math.Mat4 {
+        const translation = math.Mat4.translate(self.pos);
         const rotation = math.Mat4.rotate(self.rotation);
         return translation.mul(rotation);
     }
 };
+
+const MeshRenderer = struct {
+    mesh_id: u32,
+    shader_id: u32,
+};
+
+fn renderSystem(world: *ecs.World, mesh: *const Mesh, modelHandle: i32) void {
+    var query = world.query(.{ Transform, MeshRenderer });
+    var iter = query.entityIter();
+    while (iter.next()) |ent| {
+        const transform = query.get(Transform, ent);
+
+        const model = transform.modelMatrix();
+        c.glUniformMatrix4fv(modelHandle, 1, c.GL_FALSE, &model.data);
+        mesh.draw();
+    }
+}
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
@@ -27,17 +44,34 @@ pub fn main() !void {
 
     var world = ecs.World.init(allocator);
     defer world.deinit();
-    const e0 = world.createEntity();
-    const e1 = world.createEntity();
-    try world.addComponent(e0, math.Vec3, math.Vec3.init(0, 0, 0));
-    try world.addComponent(e1, math.Vec3, math.Vec3.init(0, 1, 0));
 
-    // Query Test
-    var query = world.query(.{math.Vec3});
-    var iter = query.entityIter();
-    while (iter.next()) |ent| {
-        std.debug.print("{}\n", .{ent});
-    }
+    const e0 = world.createEntity();
+    try world.addComponent(e0, Transform, .{ .pos = math.Vec3.init(0, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e0, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e1 = world.createEntity();
+    try world.addComponent(e1, Transform, .{ .pos = math.Vec3.init(0, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e1, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e2 = world.createEntity();
+    try world.addComponent(e2, Transform, .{ .pos = math.Vec3.init(2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e2, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e3 = world.createEntity();
+    try world.addComponent(e3, Transform, .{ .pos = math.Vec3.init(-2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e3, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e4 = world.createEntity();
+    try world.addComponent(e4, Transform, .{ .pos = math.Vec3.init(0, 2, -3), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e4, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e5 = world.createEntity();
+    try world.addComponent(e5, Transform, .{ .pos = math.Vec3.init(5, 2, -3), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e5, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
+
+    const e6 = world.createEntity();
+    try world.addComponent(e6, Transform, .{ .pos = math.Vec3.init(5, 5, -7), .rotation = math.Vec3.init(0, 0, 0) });
+    try world.addComponent(e6, MeshRenderer, .{ .mesh_id = 0, .shader_id = 0 });
 
     const v = c.glfwGetVersionString();
     std.debug.print("GLFW version: {s}\n", .{v});
@@ -95,7 +129,6 @@ pub fn main() !void {
     const projHandle = c.glGetUniformLocation(shader.program_id, "uProj");
     const viewHandle = c.glGetUniformLocation(shader.program_id, "uView");
 
-    var model = math.Mat4.identity();
     std.debug.print("{}\n", .{WIDTH / HEIGHT});
     const aspect: f32 = @as(f32, @floatFromInt(WIDTH)) / @as(f32, @floatFromInt(HEIGHT));
     const proj = math.Mat4.perspective(std.math.pi / 4.0, aspect, 0.1, 100.0);
@@ -112,15 +145,6 @@ pub fn main() !void {
 
     // main loop.
     c.glClearColor(0.05, 0.1, 0.25, 1.0);
-
-    var entities: std.ArrayList(Entity) = try .initCapacity(allocator, 6);
-    defer entities.deinit(allocator);
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(0, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(-2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(0, 2, -3), .rotation = math.Vec3.init(0, 0, 0) });
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(5, 2, -3), .rotation = math.Vec3.init(0, 0, 0) });
-    try entities.append(allocator, Entity{ .position = math.Vec3.init(5, 5, -7), .rotation = math.Vec3.init(0, 0, 0) });
 
     var camera: math.Vec3 = math.Vec3.init(0, 0, -5);
     var yaw: f32 = 0.0;
@@ -144,7 +168,6 @@ pub fn main() !void {
         const dy: f32 = @floatCast(my - last_my);
         last_mx = mx;
         last_my = my;
-        var cubeX: f32 = 0.0;
 
         yaw += dx * sensitivity;
         pitch -= dy * sensitivity;
@@ -179,22 +202,12 @@ pub fn main() !void {
             camera.y -= speed * dt;
         }
 
-        if (c.glfwGetKey(window, c.GLFW_KEY_C) == c.GLFW_PRESS) {
-            cubeX += 2.0;
-            try entities.append(allocator, Entity{ .position = math.Vec3.init(cubeX, cubeX, 0), .rotation = math.Vec3.init(0, 0, 0) });
-        }
-
         shader.use(); // every shader & rendering call now use this program, and thus our shaders.
 
         const view = math.Mat4.look_at(camera, camera.add(forward), math.Vec3.init(0, 1, 0));
         c.glUniformMatrix4fv(viewHandle, 1, c.GL_FALSE, &view.data);
 
-        for (entities.items) |*entity| {
-            entity.rotation.y += dt * speed;
-            model = entity.getModelMatrix();
-            c.glUniformMatrix4fv(modelHandle, 1, c.GL_FALSE, &model.data);
-            cube.draw();
-        }
+        renderSystem(&world, &cube, modelHandle);
 
         c.glfwSwapBuffers(window);
     }
