@@ -26,8 +26,17 @@ pub fn main() !void {
     const allocator = debug_allocator.allocator();
 
     var world = ecs.World.init(allocator);
-    try world.addComponent(0, math.Vec3, math.Vec3.init(0, 0, 0));
-    std.debug.print("{s} {?}\n", .{ @typeName(math.Vec3), world.pools.get(@typeName(math.Vec3)) });
+    defer world.deinit();
+    const e0 = world.createEntity();
+    const e1 = world.createEntity();
+    try world.addComponent(e0, math.Vec3, math.Vec3.init(0, 0, 0));
+    try world.addComponent(e1, math.Vec3, math.Vec3.init(0, 1, 0));
+
+    // Query Test
+    var it = world.query(.{math.Vec3});
+    while (it.next()) |value| {
+        std.debug.print("{}\n", .{value});
+    }
 
     const v = c.glfwGetVersionString();
     std.debug.print("GLFW version: {s}\n", .{v});
@@ -104,6 +113,7 @@ pub fn main() !void {
     c.glClearColor(0.05, 0.1, 0.25, 1.0);
 
     var entities: std.ArrayList(Entity) = try .initCapacity(allocator, 6);
+    defer entities.deinit(allocator);
     try entities.append(allocator, Entity{ .position = math.Vec3.init(0, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
     try entities.append(allocator, Entity{ .position = math.Vec3.init(2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
     try entities.append(allocator, Entity{ .position = math.Vec3.init(-2, 0, 0), .rotation = math.Vec3.init(0, 0, 0) });
