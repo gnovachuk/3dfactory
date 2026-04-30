@@ -33,9 +33,10 @@ pub fn main() !void {
     try world.addComponent(e1, math.Vec3, math.Vec3.init(0, 1, 0));
 
     // Query Test
-    var it = world.query(.{math.Vec3});
-    while (it.next()) |value| {
-        std.debug.print("{}\n", .{value});
+    var query = world.query(.{math.Vec3});
+    var iter = query.entityIter();
+    while (iter.next()) |ent| {
+        std.debug.print("{}\n", .{ent});
     }
 
     const v = c.glfwGetVersionString();

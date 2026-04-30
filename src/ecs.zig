@@ -2,16 +2,47 @@ const std = @import("std");
 
 pub const Entity = u32;
 
-pub fn QueryIterator(comptime T: type) type {
+pub fn EntityIter(comptime types: anytype) type {
     return struct {
         index: usize = 0,
-        pool: *ComponentPool(T),
+        pools: *const [types.len]*anyopaque,
+        primary_entities: []const Entity,
 
-        pub fn next(self: *@This()) ?*T {
-            if (self.index >= self.pool.dense.items.len) return null;
-            const result = &self.pool.dense.items[self.index];
-            self.index += 1;
-            return result;
+        pub fn next(self: *@This()) ?Entity {
+            outer: while (self.index < self.primary_entities.len) {
+                const ent = self.primary_entities[self.index];
+                self.index += 1;
+
+                // skip pool 0, primary entities are always in pool 0
+                inline for (types, 0..) |T, i| {
+                    if (i == 0) continue;
+                    const pool: *ComponentPool(T) = @ptrCast(@alignCast(self.pools[i]));
+                    if (!pool.has(ent)) continue :outer;
+                }
+                return ent;
+            }
+            return null;
+        }
+    };
+}
+
+fn Query(comptime types: anytype) type {
+    return struct {
+        pools: [types.len]*anyopaque,
+
+        pub fn entityIter(self: *@This()) EntityIter(types) {
+            const pool: *ComponentPool(types[0]) = @ptrCast(@alignCast(self.pools[0]));
+            return .{ .pools = &self.pools, .primary_entities = pool.entities.items };
+        }
+
+        pub fn get(self: *@This(), comptime T: type, entity: Entity) ?*T {
+            inline for (types, 0..) |Pool_T, i| {
+                if (Pool_T == T) {
+                    const pool: *ComponentPool(T) = @ptrCast(@alignCast(self.pools[i]));
+                    return pool.get(entity);
+                }
+            }
+            @compileError("Component type not in this query: " ++ @typeName(T));
         }
     };
 }
@@ -38,19 +69,14 @@ pub const World = struct {
         self.pools.deinit();
     }
 
-    pub fn query(self: *World, comptime types: anytype) QueryIterator(types[0]) {
+    pub fn query(self: *World, comptime types: anytype) Query(types) {
         // dereference fields to get corresponding ComponentPools.
-        const fst_type = types[0];
-
-        std.debug.print("looking for: '{s}'\n", .{@typeName(fst_type)});
-        std.debug.print("stored keys: \n", .{});
-        var key_it = self.pools.keyIterator();
-        while (key_it.next()) |key| {
-            std.debug.print("  '{s}'\n", .{key.*});
+        var pools: [types.len]*anyopaque = undefined;
+        inline for (types, 0..) |t, i| {
+            const pool: *ComponentPool(t) = @ptrCast(@alignCast(self.pools.get(@typeName(t)).?.ptr));
+            pools[i] = pool;
         }
-
-        const pool: *ComponentPool(fst_type) = @ptrCast(@alignCast(self.pools.get(@typeName(fst_type)).?.ptr));
-        return QueryIterator(fst_type){ .pool = pool };
+        return Query(types){ .pools = pools };
     }
 
     pub fn createEntity(self: *World) Entity {
@@ -140,6 +166,8 @@ fn ComponentPool(comptime T: type) type {
             // add new component to dense array
             const dense_index = self.dense.items.len;
             try self.dense.append(self.allocator, value);
+            try self.entities.append(self.allocator, entity); // add entity to dense entities list
+
             if (self.sparse.items.len <= entity) {
                 // resize sparse array to fit new entity
                 try self.sparse.appendNTimes(self.allocator, unassigned_entity, entity - self.sparse.items.len + 1);
